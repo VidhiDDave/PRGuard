@@ -89,6 +89,37 @@ def run_review(
             "changed lines"
         )
 
+    print()
+    print(
+        f"Issues found: "
+        f"{summary.issue_count}"
+    )
+
+    if summary.issues:
+        print()
+
+        for issue in summary.issues:
+            print(
+                f"[{issue.severity.label.upper()}] "
+                f"{issue.file_path}:{issue.line}"
+            )
+
+            print(
+                f"  {issue.rule_id}"
+            )
+
+            print(
+                f"  {issue.message}"
+            )
+
+            if issue.suggestion:
+                print(
+                    f"  Suggestion: "
+                    f"{issue.suggestion}"
+                )
+
+            print()
+
     return 0
 
 
