@@ -23,6 +23,7 @@ def test_review_summary_counts_files():
                 },
             ),
         ],
+        issues=[],
     )
 
     assert summary.file_count == 2
@@ -49,6 +50,7 @@ def test_review_summary_counts_changed_lines():
                 },
             ),
         ],
+        issues=[],
     )
 
     assert (
