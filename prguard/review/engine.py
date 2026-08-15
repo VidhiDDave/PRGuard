@@ -3,7 +3,9 @@ from pathlib import Path
 
 from prguard.analyzers import (
     analyze_python_source,
+    analyze_swift_source,
 )
+
 from prguard.git import (
     ChangedFile,
     current_branch,
@@ -86,9 +88,6 @@ class ReviewSummary:
 def _analyze_file(
     changed_file: ChangedFile,
 ) -> list[Issue]:
-    if changed_file.language != "python":
-        return []
-
     path = Path(
         changed_file.path
     )
@@ -100,10 +99,20 @@ def _analyze_file(
         encoding="utf-8"
     )
 
-    issues = analyze_python_source(
-        changed_file.path,
-        source,
-    )
+    if changed_file.language == "python":
+        issues = analyze_python_source(
+            changed_file.path,
+            source,
+        )
+
+    elif changed_file.language == "swift":
+        issues = analyze_swift_source(
+            changed_file.path,
+            source,
+        )
+
+    else:
+        return []
 
     return [
         issue
