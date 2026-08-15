@@ -10,7 +10,10 @@ from prguard.git import (
     get_supported_changed_files,
     resolve_base_ref,
 )
-from prguard.models import Issue
+from prguard.models import (
+    Issue,
+    Severity,
+)
 
 
 @dataclass(frozen=True)
@@ -22,7 +25,9 @@ class ReviewSummary:
 
     @property
     def file_count(self) -> int:
-        return len(self.changed_files)
+        return len(
+            self.changed_files
+        )
 
     @property
     def changed_line_count(self) -> int:
@@ -33,7 +38,49 @@ class ReviewSummary:
 
     @property
     def issue_count(self) -> int:
-        return len(self.issues)
+        return len(
+            self.issues
+        )
+
+    def count_by_severity(
+        self,
+        severity: Severity,
+    ) -> int:
+        return sum(
+            1
+            for issue in self.issues
+            if issue.severity == severity
+        )
+
+    def blocking_issues(
+        self,
+        fail_on: Severity,
+    ) -> list[Issue]:
+        return [
+            issue
+            for issue in self.issues
+            if issue.severity >= fail_on
+        ]
+
+    def passes(
+        self,
+        fail_on: Severity,
+    ) -> bool:
+        return not self.blocking_issues(
+            fail_on
+        )
+
+    @property
+    def highest_severity(
+        self,
+    ) -> Severity | None:
+        if not self.issues:
+            return None
+
+        return max(
+            issue.severity
+            for issue in self.issues
+        )
 
 
 def _analyze_file(
@@ -66,6 +113,20 @@ def _analyze_file(
     ]
 
 
+def _sort_issues(
+    issues: list[Issue],
+) -> list[Issue]:
+    return sorted(
+        issues,
+        key=lambda issue: (
+            -issue.severity,
+            issue.file_path,
+            issue.line,
+            issue.rule_id,
+        ),
+    )
+
+
 def prepare_review(
     base: str,
 ) -> ReviewSummary:
@@ -92,5 +153,7 @@ def prepare_review(
         branch=current_branch(),
         base_ref=base_ref,
         changed_files=changed_files,
-        issues=issues,
+        issues=_sort_issues(
+            issues
+        ),
     )
