@@ -1,3 +1,6 @@
+from prguard.analyzers.common import (
+    analyze_common_source,
+)
 from prguard.analyzers.java import (
     analyze_java_source,
 )
@@ -9,6 +12,7 @@ from prguard.analyzers.swift import (
 )
 
 __all__ = [
+    "analyze_common_source",
     "analyze_java_source",
     "analyze_python_source",
     "analyze_swift_source",

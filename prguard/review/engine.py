@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from prguard.analyzers import (
+    analyze_common_source,
     analyze_java_source,
     analyze_python_source,
     analyze_swift_source,
@@ -16,6 +17,11 @@ from prguard.models import (
     Issue,
     Severity,
 )
+
+
+LARGE_FILE_CHANGED_LINES = 500
+LARGE_PR_CHANGED_LINES = 1500
+LARGE_PR_FILE_COUNT = 20
 
 
 @dataclass(frozen=True)
@@ -99,32 +105,133 @@ def _analyze_file(
         encoding="utf-8"
     )
 
+    language_issues: list[Issue]
+
     if changed_file.language == "python":
-        issues = analyze_python_source(
-            changed_file.path,
-            source,
+        language_issues = (
+            analyze_python_source(
+                changed_file.path,
+                source,
+            )
         )
 
     elif changed_file.language == "swift":
-        issues = analyze_swift_source(
-            changed_file.path,
-            source,
+        language_issues = (
+            analyze_swift_source(
+                changed_file.path,
+                source,
+            )
         )
 
     elif changed_file.language == "java":
-        issues = analyze_java_source(
-            changed_file.path,
-            source,
+        language_issues = (
+            analyze_java_source(
+                changed_file.path,
+                source,
+            )
         )
 
     else:
         return []
+
+    common_issues = analyze_common_source(
+        changed_file.path,
+        source,
+        changed_file.language,
+    )
+
+    issues = (
+        language_issues
+        + common_issues
+    )
 
     return [
         issue
         for issue in issues
         if issue.line
         in changed_file.changed_lines
+    ]
+
+
+def _large_file_issues(
+    changed_files: list[ChangedFile],
+) -> list[Issue]:
+    issues: list[Issue] = []
+
+    for changed_file in changed_files:
+        changed_line_count = len(
+            changed_file.changed_lines
+        )
+
+        if (
+            changed_line_count
+            < LARGE_FILE_CHANGED_LINES
+        ):
+            continue
+
+        issues.append(
+            Issue(
+                rule_id="review-large-file-change",
+                severity=Severity.WARNING,
+                file_path=changed_file.path,
+                line=min(
+                    changed_file.changed_lines,
+                    default=1,
+                ),
+                message=(
+                    f"This file contains "
+                    f"{changed_line_count} changed "
+                    "lines."
+                ),
+                suggestion=(
+                    "Consider whether the change can "
+                    "be split into smaller, easier-to-"
+                    "review pieces."
+                ),
+                category="reviewability",
+            )
+        )
+
+    return issues
+
+
+def _large_pr_issues(
+    changed_files: list[ChangedFile],
+) -> list[Issue]:
+    total_lines = sum(
+        len(file.changed_lines)
+        for file in changed_files
+    )
+
+    file_count = len(
+        changed_files
+    )
+
+    if (
+        total_lines
+        < LARGE_PR_CHANGED_LINES
+        and file_count
+        < LARGE_PR_FILE_COUNT
+    ):
+        return []
+
+    return [
+        Issue(
+            rule_id="review-large-pr",
+            severity=Severity.WARNING,
+            file_path="<pull-request>",
+            line=1,
+            message=(
+                "This pull request is unusually "
+                "large for a single review."
+            ),
+            suggestion=(
+                "Consider splitting unrelated work "
+                "into smaller pull requests when "
+                "practical."
+            ),
+            category="reviewability",
+        )
     ]
 
 
@@ -163,6 +270,18 @@ def prepare_review(
                 changed_file
             )
         )
+
+    issues.extend(
+        _large_file_issues(
+            changed_files
+        )
+    )
+
+    issues.extend(
+        _large_pr_issues(
+            changed_files
+        )
+    )
 
     return ReviewSummary(
         branch=current_branch(),

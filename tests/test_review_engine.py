@@ -210,3 +210,100 @@ def test_highest_severity_is_none_without_issues():
         summary.highest_severity
         is None
     )
+
+from prguard.review.engine import (
+    _large_file_issues,
+    _large_pr_issues,
+)
+
+
+def test_large_file_change_creates_warning():
+    changed_file = ChangedFile(
+        path="large.py",
+        changed_lines=set(
+            range(
+                1,
+                501,
+            )
+        ),
+    )
+
+    issues = _large_file_issues(
+        [
+            changed_file
+        ]
+    )
+
+    assert len(issues) == 1
+
+    assert (
+        issues[0].rule_id
+        == "review-large-file-change"
+    )
+
+    assert (
+        issues[0].severity
+        == Severity.WARNING
+    )
+
+
+def test_small_file_change_does_not_warn():
+    changed_file = ChangedFile(
+        path="small.py",
+        changed_lines={
+            1,
+            2,
+            3,
+        },
+    )
+
+    issues = _large_file_issues(
+        [
+            changed_file
+        ]
+    )
+
+    assert issues == []
+
+
+def test_large_pr_creates_warning():
+    changed_files = [
+        ChangedFile(
+            path="large.py",
+            changed_lines=set(
+                range(
+                    1,
+                    1501,
+                )
+            ),
+        )
+    ]
+
+    issues = _large_pr_issues(
+        changed_files
+    )
+
+    assert len(issues) == 1
+
+    assert (
+        issues[0].rule_id
+        == "review-large-pr"
+    )
+
+
+def test_small_pr_does_not_warn():
+    changed_files = [
+        ChangedFile(
+            path="small.py",
+            changed_lines={
+                1,
+                2,
+            },
+        )
+    ]
+
+    issues = _large_pr_issues(
+        changed_files
+    )
+
+    assert issues == []
