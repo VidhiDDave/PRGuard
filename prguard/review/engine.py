@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from prguard.analyzers import (
+    analyze_java_source,
     analyze_python_source,
     analyze_swift_source,
 )
-
 from prguard.git import (
     ChangedFile,
     current_branch,
@@ -107,6 +107,12 @@ def _analyze_file(
 
     elif changed_file.language == "swift":
         issues = analyze_swift_source(
+            changed_file.path,
+            source,
+        )
+
+    elif changed_file.language == "java":
+        issues = analyze_java_source(
             changed_file.path,
             source,
         )
