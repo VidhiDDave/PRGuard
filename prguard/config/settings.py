@@ -22,6 +22,13 @@ class ConfigError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class AIConfig:
+    enabled: bool = False
+    model: str = "gpt-5.5"
+    max_changed_lines: int = 400
+
+
+@dataclass(frozen=True)
 class ReviewConfig:
     fail_on: Severity = Severity.HIGH
     enabled_languages: frozenset[str] = (
@@ -31,6 +38,7 @@ class ReviewConfig:
         frozenset()
     )
     ignored_paths: tuple[str, ...] = ()
+    ai: AIConfig = AIConfig()
 
     def is_language_enabled(
         self,
@@ -225,6 +233,68 @@ def _parse_languages(
     )
 
 
+def _parse_ai(
+    ai_table: dict,
+) -> AIConfig:
+    enabled = ai_table.get(
+        "enabled",
+        False,
+    )
+
+    if not isinstance(
+        enabled,
+        bool,
+    ):
+        raise ConfigError(
+            "'ai.enabled' must be "
+            "true or false."
+        )
+
+    model = ai_table.get(
+        "model",
+        "gpt-5.5",
+    )
+
+    if (
+        not isinstance(
+            model,
+            str,
+        )
+        or not model.strip()
+    ):
+        raise ConfigError(
+            "'ai.model' must be a "
+            "non-empty string."
+        )
+
+    max_changed_lines = ai_table.get(
+        "max_changed_lines",
+        400,
+    )
+
+    if (
+        not isinstance(
+            max_changed_lines,
+            int,
+        )
+        or isinstance(
+            max_changed_lines,
+            bool,
+        )
+        or max_changed_lines <= 0
+    ):
+        raise ConfigError(
+            "'ai.max_changed_lines' "
+            "must be a positive integer."
+        )
+
+    return AIConfig(
+        enabled=enabled,
+        model=model.strip(),
+        max_changed_lines=max_changed_lines,
+    )
+
+
 def load_config(
     path: str | Path = DEFAULT_CONFIG_PATH,
 ) -> ReviewConfig:
@@ -265,6 +335,11 @@ def load_config(
         "languages",
     )
 
+    ai_table = _get_table(
+        data,
+        "ai",
+    )
+
     fail_on = _parse_fail_on(
         review_table
     )
@@ -291,6 +366,10 @@ def load_config(
         )
     )
 
+    ai = _parse_ai(
+        ai_table
+    )
+
     return ReviewConfig(
         fail_on=fail_on,
         enabled_languages=(
@@ -302,4 +381,5 @@ def load_config(
         ignored_paths=(
             ignored_paths
         ),
+        ai=ai,
     )

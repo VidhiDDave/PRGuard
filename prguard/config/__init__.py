@@ -1,5 +1,6 @@
 from prguard.config.settings import (
     DEFAULT_CONFIG_PATH,
+    AIConfig,
     ConfigError,
     ReviewConfig,
     load_config,
@@ -7,6 +8,7 @@ from prguard.config.settings import (
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
+    "AIConfig",
     "ConfigError",
     "ReviewConfig",
     "load_config",

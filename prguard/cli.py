@@ -1,6 +1,7 @@
 import argparse
 
 from prguard import __version__
+from prguard.ai import AIReviewError
 from prguard.config import (
     DEFAULT_CONFIG_PATH,
     ConfigError,
@@ -78,6 +79,34 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    ai_group = (
+        review_parser
+        .add_mutually_exclusive_group()
+    )
+
+    ai_group.add_argument(
+        "--ai",
+        dest="use_ai",
+        action="store_true",
+        help=(
+            "Enable optional AI-assisted "
+            "context review."
+        ),
+    )
+
+    ai_group.add_argument(
+        "--no-ai",
+        dest="use_ai",
+        action="store_false",
+        help=(
+            "Disable AI-assisted review."
+        ),
+    )
+
+    review_parser.set_defaults(
+        use_ai=None
+    )
+
     return parser
 
 
@@ -113,16 +142,19 @@ def _print_issue_counts(
         f"Critical: "
         f"{summary.count_by_severity(Severity.CRITICAL)}"
     )
+
     print(
         "  "
         f"High: "
         f"{summary.count_by_severity(Severity.HIGH)}"
     )
+
     print(
         "  "
         f"Warning: "
         f"{summary.count_by_severity(Severity.WARNING)}"
     )
+
     print(
         "  "
         f"Info: "
@@ -181,6 +213,7 @@ def _print_result(
         print(
             "Result: PASS"
         )
+
         print(
             "No findings meet or exceed "
             f"the {fail_on.label} "
@@ -191,6 +224,7 @@ def _print_result(
         print(
             "Result: FAIL"
         )
+
         print(
             f"{blocking_count} finding(s) "
             "meet or exceed the "
@@ -205,6 +239,7 @@ def run_review(
     base: str,
     fail_on: Severity | None = None,
     config_path: str = DEFAULT_CONFIG_PATH,
+    use_ai: bool | None = None,
 ) -> int:
     ensure_git_repository()
 
@@ -218,9 +253,16 @@ def run_review(
         else config.fail_on
     )
 
+    effective_use_ai = (
+        use_ai
+        if use_ai is not None
+        else config.ai.enabled
+    )
+
     summary = prepare_review(
         base,
         config=config,
+        use_ai=effective_use_ai,
     )
 
     print("PRGuard Review")
@@ -243,6 +285,17 @@ def run_review(
         f"Failure threshold: "
         f"{effective_fail_on.label}"
     )
+
+    print(
+        f"AI review: "
+        f"{'enabled' if effective_use_ai else 'disabled'}"
+    )
+
+    if effective_use_ai:
+        print(
+            f"AI model: "
+            f"{config.ai.model}"
+        )
 
     print(
         f"Supported files changed: "
@@ -315,9 +368,10 @@ def main() -> int:
                 )
 
             return run_review(
-                args.base,
-                fail_on,
-                args.config,
+                base=args.base,
+                fail_on=fail_on,
+                config_path=args.config,
+                use_ai=args.use_ai,
             )
 
     except GitError as error:
@@ -330,6 +384,14 @@ def main() -> int:
     except ConfigError as error:
         print(
             f"PRGuard configuration error: "
+            f"{error}"
+        )
+
+        return 2
+
+    except AIReviewError as error:
+        print(
+            f"PRGuard AI review error: "
             f"{error}"
         )
 
