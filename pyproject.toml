@@ -13,6 +13,10 @@ dev = [
     "pytest>=8"
 ]
 
+ai = [
+    "openai>=2"
+]
+
 [project.scripts]
 prguard = "prguard.cli:main"
 

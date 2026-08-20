@@ -7,3 +7,8 @@ ignored_paths = []
 python = true
 swift = true
 java = true
+
+[ai]
+enabled = false
+model = "gpt-5.5"
+max_changed_lines = 400

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from prguard.ai import review_with_ai
 from prguard.analyzers import (
     analyze_common_source,
     analyze_java_source,
@@ -297,6 +298,8 @@ def _sort_issues(
 def prepare_review(
     base: str,
     config: ReviewConfig | None = None,
+    use_ai: bool = False,
+    ai_client=None,
 ) -> ReviewSummary:
     active_config = (
         config
@@ -341,6 +344,20 @@ def prepare_review(
             changed_files
         )
     )
+
+    if use_ai:
+        issues.extend(
+            review_with_ai(
+                changed_files=changed_files,
+                model=active_config.ai.model,
+                max_changed_lines=(
+                    active_config
+                    .ai
+                    .max_changed_lines
+                ),
+                client=ai_client,
+            )
+        )
 
     issues = _filter_enabled_issues(
         issues,

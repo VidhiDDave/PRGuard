@@ -61,7 +61,7 @@ def configure_test_review(
 
     monkeypatch.setattr(
         "prguard.cli.prepare_review",
-        lambda base, config: summary,
+        lambda base, config, use_ai: summary,
     )
 
 
@@ -192,3 +192,92 @@ def test_cli_threshold_overrides_config(
     )
 
     assert result == 0
+
+
+def test_ai_is_disabled_by_default(
+    monkeypatch,
+):
+    summary = make_summary(
+        []
+    )
+
+    captured = {}
+
+    monkeypatch.setattr(
+        "prguard.cli.ensure_git_repository",
+        lambda: None,
+    )
+
+    monkeypatch.setattr(
+        "prguard.cli.load_config",
+        lambda path: ReviewConfig(),
+    )
+
+    def fake_prepare_review(
+        base,
+        config,
+        use_ai,
+    ):
+        captured["use_ai"] = use_ai
+        return summary
+
+    monkeypatch.setattr(
+        "prguard.cli.prepare_review",
+        fake_prepare_review,
+    )
+
+    result = run_review(
+        "main"
+    )
+
+    assert result == 0
+
+    assert (
+        captured["use_ai"]
+        is False
+    )
+
+
+def test_cli_can_enable_ai(
+    monkeypatch,
+):
+    summary = make_summary(
+        []
+    )
+
+    captured = {}
+
+    monkeypatch.setattr(
+        "prguard.cli.ensure_git_repository",
+        lambda: None,
+    )
+
+    monkeypatch.setattr(
+        "prguard.cli.load_config",
+        lambda path: ReviewConfig(),
+    )
+
+    def fake_prepare_review(
+        base,
+        config,
+        use_ai,
+    ):
+        captured["use_ai"] = use_ai
+        return summary
+
+    monkeypatch.setattr(
+        "prguard.cli.prepare_review",
+        fake_prepare_review,
+    )
+
+    result = run_review(
+        "main",
+        use_ai=True,
+    )
+
+    assert result == 0
+
+    assert (
+        captured["use_ai"]
+        is True
+    )
