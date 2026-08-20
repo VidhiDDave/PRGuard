@@ -1,4 +1,5 @@
 from prguard.cli import run_review
+from prguard.config import ReviewConfig
 from prguard.git import ChangedFile
 from prguard.models import (
     Issue,
@@ -39,23 +40,45 @@ def make_issue(
     )
 
 
-def test_review_returns_zero_when_no_blocking_issues(
+def configure_test_review(
     monkeypatch,
-):
+    summary: ReviewSummary,
+    config: ReviewConfig | None = None,
+) -> None:
     monkeypatch.setattr(
         "prguard.cli.ensure_git_repository",
         lambda: None,
     )
 
     monkeypatch.setattr(
-        "prguard.cli.prepare_review",
-        lambda base: make_summary(
-            [
-                make_issue(
-                    Severity.WARNING
-                )
-            ]
+        "prguard.cli.load_config",
+        lambda path: (
+            config
+            if config is not None
+            else ReviewConfig()
         ),
+    )
+
+    monkeypatch.setattr(
+        "prguard.cli.prepare_review",
+        lambda base, config: summary,
+    )
+
+
+def test_review_returns_zero_when_no_blocking_issues(
+    monkeypatch,
+):
+    summary = make_summary(
+        [
+            make_issue(
+                Severity.WARNING
+            )
+        ]
+    )
+
+    configure_test_review(
+        monkeypatch,
+        summary,
     )
 
     result = run_review(
@@ -69,20 +92,17 @@ def test_review_returns_zero_when_no_blocking_issues(
 def test_review_returns_one_for_high_issue(
     monkeypatch,
 ):
-    monkeypatch.setattr(
-        "prguard.cli.ensure_git_repository",
-        lambda: None,
+    summary = make_summary(
+        [
+            make_issue(
+                Severity.HIGH
+            )
+        ]
     )
 
-    monkeypatch.setattr(
-        "prguard.cli.prepare_review",
-        lambda base: make_summary(
-            [
-                make_issue(
-                    Severity.HIGH
-                )
-            ]
-        ),
+    configure_test_review(
+        monkeypatch,
+        summary,
     )
 
     result = run_review(
@@ -96,20 +116,17 @@ def test_review_returns_one_for_high_issue(
 def test_warning_can_be_configured_to_fail(
     monkeypatch,
 ):
-    monkeypatch.setattr(
-        "prguard.cli.ensure_git_repository",
-        lambda: None,
+    summary = make_summary(
+        [
+            make_issue(
+                Severity.WARNING
+            )
+        ]
     )
 
-    monkeypatch.setattr(
-        "prguard.cli.prepare_review",
-        lambda base: make_summary(
-            [
-                make_issue(
-                    Severity.WARNING
-                )
-            ]
-        ),
+    configure_test_review(
+        monkeypatch,
+        summary,
     )
 
     result = run_review(
@@ -118,3 +135,60 @@ def test_warning_can_be_configured_to_fail(
     )
 
     assert result == 1
+
+
+def test_configured_threshold_is_used(
+    monkeypatch,
+):
+    summary = make_summary(
+        [
+            make_issue(
+                Severity.WARNING
+            )
+        ]
+    )
+
+    config = ReviewConfig(
+        fail_on=Severity.WARNING
+    )
+
+    configure_test_review(
+        monkeypatch,
+        summary,
+        config,
+    )
+
+    result = run_review(
+        "main"
+    )
+
+    assert result == 1
+
+
+def test_cli_threshold_overrides_config(
+    monkeypatch,
+):
+    summary = make_summary(
+        [
+            make_issue(
+                Severity.WARNING
+            )
+        ]
+    )
+
+    config = ReviewConfig(
+        fail_on=Severity.WARNING
+    )
+
+    configure_test_review(
+        monkeypatch,
+        summary,
+        config,
+    )
+
+    result = run_review(
+        "main",
+        Severity.HIGH,
+    )
+
+    assert result == 0

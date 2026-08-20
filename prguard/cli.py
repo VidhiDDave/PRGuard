@@ -1,6 +1,11 @@
 import argparse
 
 from prguard import __version__
+from prguard.config import (
+    DEFAULT_CONFIG_PATH,
+    ConfigError,
+    load_config,
+)
 from prguard.git import (
     GitError,
     ensure_git_repository,
@@ -56,11 +61,20 @@ def build_parser() -> argparse.ArgumentParser:
             "high",
             "critical",
         ],
-        default="high",
+        default=None,
         help=(
-            "Lowest severity that causes "
-            "the review to fail "
-            "(default: high)."
+            "Override the configured lowest "
+            "severity that causes the review "
+            "to fail."
+        ),
+    )
+
+    review_parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_PATH,
+        help=(
+            "PRGuard TOML configuration file "
+            "(default: .prguard.toml)."
         ),
     )
 
@@ -189,30 +203,52 @@ def _print_result(
 
 def run_review(
     base: str,
-    fail_on: Severity = DEFAULT_FAIL_ON,
+    fail_on: Severity | None = None,
+    config_path: str = DEFAULT_CONFIG_PATH,
 ) -> int:
     ensure_git_repository()
 
+    config = load_config(
+        config_path
+    )
+
+    effective_fail_on = (
+        fail_on
+        if fail_on is not None
+        else config.fail_on
+    )
+
     summary = prepare_review(
-        base
+        base,
+        config=config,
     )
 
     print("PRGuard Review")
     print("=" * 50)
+
     print(
         f"Branch: {summary.branch}"
     )
+
     print(
         f"Base: {summary.base_ref}"
     )
+
+    print(
+        f"Configuration: "
+        f"{config_path}"
+    )
+
     print(
         f"Failure threshold: "
-        f"{fail_on.label}"
+        f"{effective_fail_on.label}"
     )
+
     print(
         f"Supported files changed: "
         f"{summary.file_count}"
     )
+
     print(
         f"Changed lines: "
         f"{summary.changed_line_count}"
@@ -220,13 +256,15 @@ def run_review(
 
     if not summary.changed_files:
         print()
+
         print(
-            "No changed Python, Swift, "
+            "No enabled Python, Swift, "
             "or Java files found."
         )
 
         print()
         print("-" * 50)
+
         print(
             "Result: PASS"
         )
@@ -247,7 +285,7 @@ def run_review(
 
     passed = _print_result(
         summary,
-        fail_on,
+        effective_fail_on,
     )
 
     if passed:
@@ -267,18 +305,32 @@ def main() -> int:
 
     try:
         if args.command == "review":
-            fail_on = Severity.from_string(
-                args.fail_on
-            )
+            fail_on = None
+
+            if args.fail_on is not None:
+                fail_on = (
+                    Severity.from_string(
+                        args.fail_on
+                    )
+                )
 
             return run_review(
                 args.base,
                 fail_on,
+                args.config,
             )
 
     except GitError as error:
         print(
             f"PRGuard Git error: {error}"
+        )
+
+        return 2
+
+    except ConfigError as error:
+        print(
+            f"PRGuard configuration error: "
+            f"{error}"
         )
 
         return 2

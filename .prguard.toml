@@ -1,0 +1,9 @@
+[review]
+fail_on = "high"
+disabled_rules = []
+ignored_paths = []
+
+[languages]
+python = true
+swift = true
+java = true

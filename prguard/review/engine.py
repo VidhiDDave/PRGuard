@@ -7,6 +7,7 @@ from prguard.analyzers import (
     analyze_python_source,
     analyze_swift_source,
 )
+from prguard.config import ReviewConfig
 from prguard.git import (
     ChangedFile,
     current_branch,
@@ -91,6 +92,48 @@ class ReviewSummary:
         )
 
 
+def _filter_changed_files(
+    changed_files: list[ChangedFile],
+    config: ReviewConfig,
+) -> list[ChangedFile]:
+    filtered_files: list[ChangedFile] = []
+
+    for changed_file in changed_files:
+        language = changed_file.language
+
+        if language is None:
+            continue
+
+        if not config.is_language_enabled(
+            language
+        ):
+            continue
+
+        if config.is_path_ignored(
+            changed_file.path
+        ):
+            continue
+
+        filtered_files.append(
+            changed_file
+        )
+
+    return filtered_files
+
+
+def _filter_enabled_issues(
+    issues: list[Issue],
+    config: ReviewConfig,
+) -> list[Issue]:
+    return [
+        issue
+        for issue in issues
+        if config.is_rule_enabled(
+            issue.rule_id
+        )
+    ]
+
+
 def _analyze_file(
     changed_file: ChangedFile,
 ) -> list[Issue]:
@@ -171,7 +214,9 @@ def _large_file_issues(
 
         issues.append(
             Issue(
-                rule_id="review-large-file-change",
+                rule_id=(
+                    "review-large-file-change"
+                ),
                 severity=Severity.WARNING,
                 file_path=changed_file.path,
                 line=min(
@@ -251,7 +296,14 @@ def _sort_issues(
 
 def prepare_review(
     base: str,
+    config: ReviewConfig | None = None,
 ) -> ReviewSummary:
+    active_config = (
+        config
+        if config is not None
+        else ReviewConfig()
+    )
+
     base_ref = resolve_base_ref(
         base
     )
@@ -259,6 +311,13 @@ def prepare_review(
     changed_files = (
         get_supported_changed_files(
             base_ref
+        )
+    )
+
+    changed_files = (
+        _filter_changed_files(
+            changed_files,
+            active_config,
         )
     )
 
@@ -281,6 +340,11 @@ def prepare_review(
         _large_pr_issues(
             changed_files
         )
+    )
+
+    issues = _filter_enabled_issues(
+        issues,
+        active_config,
     )
 
     return ReviewSummary(
