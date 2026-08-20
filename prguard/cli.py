@@ -12,6 +12,7 @@ from prguard.git import (
     ensure_git_repository,
 )
 from prguard.models import Severity
+from prguard.output import render_json
 from prguard.review import prepare_review
 
 
@@ -79,6 +80,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    review_parser.add_argument(
+        "--format",
+        choices=[
+            "text",
+            "json",
+        ],
+        default="text",
+        help=(
+            "Output format "
+            "(default: text)."
+        ),
+    )
+
     ai_group = (
         review_parser
         .add_mutually_exclusive_group()
@@ -129,6 +143,7 @@ def _print_issue_counts(
     summary,
 ) -> None:
     print()
+
     print(
         f"Issues found: "
         f"{summary.issue_count}"
@@ -235,36 +250,13 @@ def _print_result(
     return passed
 
 
-def run_review(
-    base: str,
-    fail_on: Severity | None = None,
-    config_path: str = DEFAULT_CONFIG_PATH,
-    use_ai: bool | None = None,
-) -> int:
-    ensure_git_repository()
-
-    config = load_config(
-        config_path
-    )
-
-    effective_fail_on = (
-        fail_on
-        if fail_on is not None
-        else config.fail_on
-    )
-
-    effective_use_ai = (
-        use_ai
-        if use_ai is not None
-        else config.ai.enabled
-    )
-
-    summary = prepare_review(
-        base,
-        config=config,
-        use_ai=effective_use_ai,
-    )
-
+def _print_text_review(
+    summary,
+    config_path: str,
+    fail_on: Severity,
+    use_ai: bool,
+    ai_model: str,
+) -> bool:
     print("PRGuard Review")
     print("=" * 50)
 
@@ -283,18 +275,18 @@ def run_review(
 
     print(
         f"Failure threshold: "
-        f"{effective_fail_on.label}"
+        f"{fail_on.label}"
     )
 
     print(
         f"AI review: "
-        f"{'enabled' if effective_use_ai else 'disabled'}"
+        f"{'enabled' if use_ai else 'disabled'}"
     )
 
-    if effective_use_ai:
+    if use_ai:
         print(
             f"AI model: "
-            f"{config.ai.model}"
+            f"{ai_model}"
         )
 
     print(
@@ -322,7 +314,7 @@ def run_review(
             "Result: PASS"
         )
 
-        return 0
+        return True
 
     _print_files(
         summary
@@ -336,9 +328,66 @@ def run_review(
         summary
     )
 
-    passed = _print_result(
+    return _print_result(
         summary,
-        effective_fail_on,
+        fail_on,
+    )
+
+
+def run_review(
+    base: str,
+    fail_on: Severity | None = None,
+    config_path: str = DEFAULT_CONFIG_PATH,
+    use_ai: bool | None = None,
+    output_format: str = "text",
+) -> int:
+    ensure_git_repository()
+
+    config = load_config(
+        config_path
+    )
+
+    effective_fail_on = (
+        fail_on
+        if fail_on is not None
+        else config.fail_on
+    )
+
+    effective_use_ai = (
+        use_ai
+        if use_ai is not None
+        else config.ai.enabled
+    )
+
+    summary = prepare_review(
+        base,
+        config=config,
+        use_ai=effective_use_ai,
+    )
+
+    if output_format == "json":
+        print(
+            render_json(
+                summary=summary,
+                fail_on=effective_fail_on,
+                config_path=config_path,
+                use_ai=effective_use_ai,
+            )
+        )
+
+        if summary.passes(
+            effective_fail_on
+        ):
+            return 0
+
+        return 1
+
+    passed = _print_text_review(
+        summary=summary,
+        config_path=config_path,
+        fail_on=effective_fail_on,
+        use_ai=effective_use_ai,
+        ai_model=config.ai.model,
     )
 
     if passed:
@@ -372,6 +421,7 @@ def main() -> int:
                 fail_on=fail_on,
                 config_path=args.config,
                 use_ai=args.use_ai,
+                output_format=args.format,
             )
 
     except GitError as error:

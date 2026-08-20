@@ -4,9 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prguard"
-version = "0.1.0"
+version = "1.0.0"
 description = "Pre-merge code review CLI for Swift, Python, and Java."
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -19,6 +33,10 @@ ai = [
 
 [project.scripts]
 prguard = "prguard.cli:main"
+
+[project.urls]
+Repository = "https://github.com/VidhiDDave/PRGuard"
+Issues = "https://github.com/VidhiDDave/PRGuard/issues"
 
 [tool.setuptools.packages.find]
 include = ["prguard*"]
