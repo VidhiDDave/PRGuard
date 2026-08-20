@@ -1,0 +1,233 @@
+name: PRGuard Manual Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to review"
+        required: true
+        type: string
+
+      use_ai:
+        description: "Run optional AI-assisted review"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  review:
+    name: Run PRGuard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Read pull request metadata
+        id: pr
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const rawNumber = "${{ inputs.pr_number }}";
+            const prNumber = Number(rawNumber);
+
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed(
+                `Invalid pull request number: ${rawNumber}`
+              );
+              return;
+            }
+
+            const { data: pull } =
+              await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+
+            if (pull.state !== "open") {
+              core.setFailed(
+                `Pull request #${prNumber} is not open`
+              );
+              return;
+            }
+
+            core.setOutput(
+              "head_sha",
+              pull.head.sha
+            );
+
+            core.setOutput(
+              "head_repo",
+              pull.head.repo.full_name
+            );
+
+            core.setOutput(
+              "base_ref",
+              pull.base.ref
+            );
+
+            core.setOutput(
+              "base_sha",
+              pull.base.sha
+            );
+
+            core.setOutput(
+              "base_repo",
+              pull.base.repo.full_name
+            );
+
+            core.info(
+              `Reviewing PR #${prNumber} at ${pull.head.sha}`
+            );
+
+      - name: Mark PRGuard running
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: "${{ steps.pr.outputs.head_sha }}",
+              state: "pending",
+              context: "PRGuard",
+              description: "PRGuard review is running",
+              target_url:
+                `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+
+      - name: Checkout trusted PRGuard
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pr.outputs.base_repo }}
+          ref: ${{ steps.pr.outputs.base_sha }}
+          path: trusted-prguard
+          persist-credentials: false
+
+      - name: Checkout pull request
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_sha }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install trusted PRGuard
+        working-directory: trusted-prguard
+        run: |
+          python -m pip install --upgrade pip
+
+          if [ "${{ inputs.use_ai }}" = "true" ]; then
+            pip install -e ".[ai]"
+          else
+            pip install -e .
+          fi
+
+      - name: Fetch base branch into target repository
+        working-directory: target
+        run: |
+          git remote add prguard-base \
+            "https://github.com/${{ steps.pr.outputs.base_repo }}.git"
+
+          git fetch \
+            --no-tags \
+            prguard-base \
+            "${{ steps.pr.outputs.base_ref }}"
+
+          git branch \
+            --force \
+            prguard-base \
+            "FETCH_HEAD"
+
+      - name: Run PRGuard without AI
+        if: ${{ inputs.use_ai == false }}
+        id: review_no_ai
+        working-directory: target
+        continue-on-error: true
+        run: |
+          prguard review \
+            --base prguard-base \
+            --config ../trusted-prguard/.prguard.toml \
+            --no-ai
+
+      - name: Require AI key
+        if: ${{ inputs.use_ai == true }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY is not configured."
+            exit 1
+          fi
+
+      - name: Run PRGuard with AI
+        if: ${{ inputs.use_ai == true }}
+        id: review_ai
+        working-directory: target
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          prguard review \
+            --base prguard-base \
+            --config ../trusted-prguard/.prguard.toml \
+            --ai
+
+      - name: Determine review result
+        id: result
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ inputs.use_ai }}" = "true" ]; then
+            OUTCOME="${{ steps.review_ai.outcome }}"
+          else
+            OUTCOME="${{ steps.review_no_ai.outcome }}"
+          fi
+
+          if [ "$OUTCOME" = "success" ]; then
+            echo "state=success" >> "$GITHUB_OUTPUT"
+            echo "description=PRGuard review passed" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=failure" >> "$GITHUB_OUTPUT"
+            echo "description=PRGuard review failed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish final PRGuard status
+        if: always() && steps.pr.outputs.head_sha != ''
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const state =
+              "${{ steps.result.outputs.state }}" || "failure";
+
+            const description =
+              "${{ steps.result.outputs.description }}" ||
+              "PRGuard workflow failed";
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: "${{ steps.pr.outputs.head_sha }}",
+              state,
+              context: "PRGuard",
+              description,
+              target_url:
+                `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+
+      - name: Fail workflow when PRGuard fails
+        if: ${{ steps.result.outputs.state != 'success' }}
+        run: |
+          echo "PRGuard did not pass."
+          exit 1

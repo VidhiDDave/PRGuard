@@ -1,0 +1,36 @@
+name: PRGuard Pending Gate
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  mark-prguard-pending:
+    name: Mark PRGuard pending
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set PRGuard status to pending
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const sha = context.payload.pull_request.head.sha;
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: "pending",
+              context: "PRGuard",
+              description: "Waiting for manual PRGuard review"
+            });
+
+            core.info(`PRGuard marked pending for ${sha}`);
